@@ -1,0 +1,87 @@
+[PARSER]
+    Name        sftp_transfer
+    Format      regex
+    Regex       ^(?<date>\w{3} +\d{1,2} \d{2}:\d{2}:\d{2}) (?<server>\S+) sshd\[(?<sessionid>\d+)\]: close "(?<filename>[^"]+)" bytes read (?<read_bytes>\d+) written (?<written_bytes>\d+)
+    Time_Key    date
+    Time_Format %b %d %H:%M:%S
+    Time_Keep   On
+    Types       sessionid:integer read_bytes:integer written_bytes:integer
+
+[PARSER]
+    Name        sftp_session
+    Format      regex
+    Regex       ^(?<date>\w{3} +\d{1,2} \d{2}:\d{2}:\d{2}) (?<server>\S+) sshd\[(?<sessionid>\d+)\]: session opened for local user (?<user>\S+) from \[(?<ip>[^\]]+)\]
+    Time_Key    date
+    Time_Format %b %d %H:%M:%S
+    Time_Keep   On
+    Types       sessionid:integer
+
+
+[FILTER]
+    Name         parser
+    Match        sftp.*
+    Key_Name     log
+    Parser       sftp_transfer
+    Parser       sftp_session
+    Reserve_Data On
+
+----------------------
+[FILTER]
+    Name     grep
+    Match    sftp.*
+    Logical_Op or
+    Regex    filename .
+    Regex    user .
+---------------------
+[SERVICE]
+    Hot_Reload   On
+    # nécessaires seulement pour le rechargement via HTTP :
+    HTTP_Server  On
+    HTTP_Listen  127.0.0.1
+    HTTP_Port    2020
+
+
+[OUTPUT]
+    Name   opensearch
+    Match  app.*
+    # ... votre config existante (Host, Port, Index, etc.)
+
+[OUTPUT]
+    Name    file
+    Match   app.*
+    Path    /tmp/fluentbit-debug
+    File    debug.log
+    Format  plain
+    Mkdir   On
+
+---------
+
+[INPUT]
+    Name  tail
+    Path  /var/log/app/*.log
+    Tag   app.web
+
+[FILTER]   # 1. structure la ligne brute
+    Name         parser
+    Match        app.*
+    Key_Name     log
+    Parser       app_json
+    Parser       app_std
+    Reserve_Data On
+
+[FILTER]   # 2. jette les logs DEBUG
+    Name     grep
+    Match    app.*
+    Exclude  level ^DEBUG$
+
+[FILTER]   # 3. enrichit et nettoie
+    Name    modify
+    Match   app.*
+    Add     env production
+    Rename  message msg
+    Remove  thread
+
+[OUTPUT]
+    Name   stdout
+    Match  app.*
+-------------
