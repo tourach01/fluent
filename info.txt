@@ -85,3 +85,42 @@
     Name   stdout
     Match  app.*
 -------------
+
+
+[INPUT]
+    Name    tail
+    Path    /var/log/secure
+    Tag     sftp.logs
+    Parser  mon_parser
+
+
+---
+
+[SERVICE]
+    Parsers_File  /etc/fluent-bit/parsers.conf
+
+[INPUT]
+    Name    tail
+    Path    /var/log/secure
+    Tag     sftp.logs
+    DB      /var/lib/fluent-bit/sftp.db
+
+[FILTER]
+    Name         parser
+    Match        sftp.*
+    Key_Name     log
+    Parser       sftp_transfer
+    Parser       sftp_session
+    Reserve_Data On
+
+[FILTER]
+    Name        grep
+    Match       sftp.*
+    Logical_Op  or
+    Regex       filename .
+    Regex       user .
+
+[OUTPUT]
+    Name   opensearch
+    Match  sftp.*
+    # ... votre config existante
